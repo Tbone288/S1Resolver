@@ -17,17 +17,16 @@ import (
 	"time"
 )
 
-// --- COLORS ---
 const (
-	ColorHeader = "\033[96m" // Cyan
-	ColorBlue   = "\033[94m" // Blue
-	ColorGreen  = "\033[92m" // Green
-	ColorRed    = "\033[91m" // Red
+	AppVersion  = "v1.0"
+	ColorHeader = "\033[96m"
+	ColorBlue   = "\033[94m"
+	ColorGreen  = "\033[92m" 
+	ColorRed    = "\033[91m" 
 	ColorReset  = "\033[0m"
 	ColorBold   = "\033[1m"
 )
 
-// --- STRUCTS ---
 type ConfigEntry struct {
 	Name  string `json:"name"`
 	URL   string `json:"url"`
@@ -69,7 +68,6 @@ type GenericResponse struct {
 	} `json:"data"`
 }
 
-// Result struct for concurrent scanning
 type ScanResult struct {
 	SiteName string
 	Count    int
@@ -86,9 +84,16 @@ func main() {
 	threatsFlag := flag.Bool("t", false, "Threats Mode")
 	alertsFlag := flag.Bool("a", false, "Alerts Mode")
 	listConsolesFlag := flag.Bool("list-consoles", false, "List consoles for autocomplete")
+	versionFlag := flag.Bool("version", false, "Show version")
 	flag.Parse()
 
-	// 2. Load Config
+	// 2. Handle Version
+	if *versionFlag {
+		fmt.Printf("S1Resolver %s\n", AppVersion)
+		os.Exit(0)
+	}
+
+	// 3. Load Config
 	config := loadConfig()
 
 	// --- AUTOCOMPLETE HOOK ---
@@ -148,7 +153,7 @@ func main() {
 		fmt.Printf("%sNo sites found or connection failed.%s\n", ColorRed, ColorReset)
 		return
 	}
-	
+
 	// Sort sites alphabetically
 	sort.Slice(sites, func(i, j int) bool {
 		return strings.ToLower(sites[i].Name) < strings.ToLower(sites[j].Name)
@@ -165,95 +170,97 @@ func main() {
 		fmt.Printf("%sNo 'Default' site found.%s\n", ColorRed, ColorReset)
 		return
 	} else {
-		fmt.Printf("\n%s%s--- Available Sites ---%s\n", ColorBold, ColorHeader, ColorReset)
-		fmt.Printf("%s0.%s %sNot Sure (Scan All Sites)%s\n", ColorBlue, ColorReset, ColorBold, ColorReset)
-		for i, s := range sites {
-			fmt.Printf("%s%d.%s %s\n", ColorBlue, i+1, ColorReset, s.Name)
-		}
-
-		inputStr := promptString("\n" + ColorBold + "Select Site:" + ColorReset + " ")
-		
-		// --- CONCURRENT SCAN MODE (0) ---
-		if inputStr == "0" {
-			mode := ""
-			if *threatsFlag {
-				mode = "1"
-			} else if *alertsFlag {
-				mode = "2"
-			} else {
-				mode = promptString(fmt.Sprintf("1. %sThreats%s\n2. %sAlerts%s\nChoice: ", ColorRed, ColorReset, ColorRed, ColorReset))
+		// Loops back to select site if alert or threat was preselected using flags without a site selecion
+		for {
+			fmt.Printf("\n%s%s--- Available Sites ---%s\n", ColorBold, ColorHeader, ColorReset)
+			fmt.Printf("%s0.%s %sNot Sure (Scan All Sites)%s\n", ColorBlue, ColorReset, ColorBold, ColorReset)
+			for i, s := range sites {
+				fmt.Printf("%s%d.%s %s\n", ColorBlue, i+1, ColorReset, s.Name)
 			}
 
-			fmt.Printf("Scanning %d sites...\n", len(sites))
-			
-			// Worker Pool Config
-			maxConcurrency := 5
-			sem := make(chan struct{}, maxConcurrency) // Semaphore
-			results := make(chan ScanResult, len(sites))
-			var wg sync.WaitGroup
+			inputStr := promptString("\n" + ColorBold + "Select Site:" + ColorReset + " ")
 
-			for _, s := range sites {
-				wg.Add(1)
-				go func(site Site) {
-					defer wg.Done()
-					sem <- struct{}{} // Acquire token
-					defer func() { <-sem }() // Release token
-
-					var foundIDs []string
-					if mode == "1" {
-						items := getThreats(activeConsole.URL, activeConsole.Token, site.ID, true)
-						for _, it := range items { foundIDs = append(foundIDs, it.ID) }
-					} else {
-						items := getAlerts(activeConsole.URL, activeConsole.Token, site.ID, true)
-						for _, it := range items { foundIDs = append(foundIDs, it.AlertInfo.AlertID) }
-					}
-
-					if len(foundIDs) > 0 {
-						results <- ScanResult{SiteName: site.Name, Count: len(foundIDs), Items: foundIDs}
-					}
-				}(s)
-			}
-
-			// Closer routine
-			go func() {
-				wg.Wait()
-				close(results)
-			}()
-
-			// Process Results
-			foundAny := false
-			for res := range results {
-				foundAny = true
-				lbl := "Threats"
-				if mode == "2" { lbl = "Alerts" }
-				
-				fmt.Printf("Found %d %s%s%s in %s%s%s\n", res.Count, ColorRed, lbl, ColorReset, ColorBold, res.SiteName, ColorReset)
-				
-				// Optional: You could ask to resolve per site here, 
-				// but for parallel scanning it's often cleaner to just report.
-				// Uncomment below if you want interactive resolution during scan output:
-				/*
-				if promptYesNo("Resolve this site? (y/n): ") {
-					if mode == "1" { resolveThreats(activeConsole.URL, activeConsole.Token, res.Items, promptString("Note: ")) }
-					else { resolveAlerts(activeConsole.URL, activeConsole.Token, res.Items) }
+			// Option to scan all sites simultaneously
+			if inputStr == "0" {
+				mode := ""
+				if *threatsFlag {
+					mode = "1"
+				} else if *alertsFlag {
+					mode = "2"
+				} else {
+					mode = promptString(fmt.Sprintf("1. %sThreats%s\n2. %sAlerts%s\nChoice: ", ColorRed, ColorReset, ColorRed, ColorReset))
 				}
-				*/
+
+				fmt.Printf("Scanning %d sites...\n", len(sites))
+
+				// Worker Pool Config
+				maxConcurrency := 5
+				sem := make(chan struct{}, maxConcurrency)
+				results := make(chan ScanResult, len(sites))
+				var wg sync.WaitGroup
+
+				for _, s := range sites {
+					wg.Add(1)
+					go func(site Site) {
+						defer wg.Done()
+						sem <- struct{}{}        // Acquire token
+						defer func() { <-sem }() // Release token
+
+						var foundIDs []string
+						if mode == "1" {
+							items := getThreats(activeConsole.URL, activeConsole.Token, site.ID, true)
+							for _, it := range items {
+								foundIDs = append(foundIDs, it.ID)
+							}
+						} else {
+							items := getAlerts(activeConsole.URL, activeConsole.Token, site.ID, true)
+							for _, it := range items {
+								foundIDs = append(foundIDs, it.AlertInfo.AlertID)
+							}
+						}
+
+						if len(foundIDs) > 0 {
+							results <- ScanResult{SiteName: site.Name, Count: len(foundIDs), Items: foundIDs}
+						}
+					}(s)
+				}
+
+				// Closer routine
+				go func() {
+					wg.Wait()
+					close(results)
+				}()
+
+				// Process Results
+				foundAny := false
+				for res := range results {
+					foundAny = true
+					lbl := "Threats"
+					if mode == "2" {
+						lbl = "Alerts"
+					}
+					fmt.Printf("Found %d %s%s%s in %s%s%s\n", res.Count, ColorRed, lbl, ColorReset, ColorBold, res.SiteName, ColorReset)
+				}
+
+				if !foundAny {
+					fmt.Printf("%sScan Complete. No items found.%s\n", ColorGreen, ColorReset)
+				} else {
+					fmt.Printf("\n%sScan Complete.%s\n", ColorGreen, ColorReset)
+				}
+				
+				fmt.Println("\nPress Enter to return to site list...")
+				fmt.Scanln()
+				continue // <--- LOOPS BACK TO MENU
 			}
 
-			if !foundAny {
-				fmt.Printf("%sScan Complete. No items found.%s\n", ColorGreen, ColorReset)
+			// Regular Selection
+			if idx, err := strconv.Atoi(inputStr); err == nil && idx > 0 && idx <= len(sites) {
+				selectedSite = sites[idx-1]
+				break // <--- BREAKS LOOP TO CONTINUE
 			} else {
-				fmt.Printf("\n%sScan Complete.%s\n", ColorGreen, ColorReset)
+				fmt.Printf("%sInvalid selection.%s\n", ColorRed, ColorReset)
+				// Loops back to try again
 			}
-			return
-		}
-
-		// Regular Selection
-		if idx, err := strconv.Atoi(inputStr); err == nil && idx > 0 && idx <= len(sites) {
-			selectedSite = sites[idx-1]
-		} else {
-			fmt.Printf("%sInvalid selection.%s\n", ColorRed, ColorReset)
-			return
 		}
 	}
 
@@ -283,7 +290,9 @@ STEP3:
 		if promptYesNo(fmt.Sprintf("Mark ALL as %sFalse Positive & Resolved%s? (y/n): ", ColorGreen, ColorReset)) {
 			note := promptString("Resolution Note: ")
 			var ids []string
-			for _, t := range threats { ids = append(ids, t.ID) }
+			for _, t := range threats {
+				ids = append(ids, t.ID)
+			}
 			resolveThreats(activeConsole.URL, activeConsole.Token, ids, note)
 		}
 	} else if mode == "2" {
@@ -295,7 +304,9 @@ STEP3:
 		fmt.Printf("\nFound %s%d%s undefined alerts.\n", ColorBold, len(alerts), ColorReset)
 		if promptYesNo(fmt.Sprintf("Mark ALL as %sFalse Positive & Resolved%s? (y/n): ", ColorGreen, ColorReset)) {
 			var ids []string
-			for _, a := range alerts { ids = append(ids, a.AlertInfo.AlertID) }
+			for _, a := range alerts {
+				ids = append(ids, a.AlertInfo.AlertID)
+			}
 			resolveAlerts(activeConsole.URL, activeConsole.Token, ids)
 		}
 	} else {
@@ -308,7 +319,9 @@ STEP3:
 func getSites(baseURL, token string) []Site {
 	url := baseURL + "/web/api/v2.1/sites?limit=1000&state=active"
 	body, err := makeRequest("GET", url, token, nil)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 
 	var resp SiteResponse
 	json.Unmarshal(body, &resp)
@@ -321,7 +334,9 @@ func getThreats(baseURL, token, siteID string, silent bool) []Threat {
 	}
 	url := baseURL + "/web/api/v2.1/threats?limit=1000&analystVerdicts=undefined&incidentStatuses=unresolved&siteIds=" + siteID
 	body, err := makeRequest("GET", url, token, nil)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	var resp ThreatResponse
 	json.Unmarshal(body, &resp)
 	return resp.Data
@@ -333,7 +348,9 @@ func getAlerts(baseURL, token, siteID string, silent bool) []Alert {
 	}
 	url := baseURL + "/web/api/v2.1/cloud-detection/alerts?limit=1000&analystVerdict=UNDEFINED&incidentStatus=UNRESOLVED&siteIds=" + siteID
 	body, err := makeRequest("GET", url, token, nil)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	var resp AlertResponse
 	json.Unmarshal(body, &resp)
 	return resp.Data
@@ -353,11 +370,13 @@ func resolveThreats(baseURL, token string, ids []string, note string) {
 		"data":   map[string]string{"incidentStatus": "resolved", "analystVerdict": "false_positive"},
 	}
 	resp, _ := makeRequest("POST", baseURL+"/web/api/v2.1/threats/incident", token, payloadResolve)
-	
+
 	var gResp GenericResponse
 	json.Unmarshal(resp, &gResp)
 	count := len(ids)
-	if gResp.Data.Affected > 0 { count = gResp.Data.Affected }
+	if gResp.Data.Affected > 0 {
+		count = gResp.Data.Affected
+	}
 
 	fmt.Printf(" - %sSuccess!%s %d threats marked as FP & Resolved.\n", ColorGreen, ColorReset, count)
 }
@@ -394,7 +413,9 @@ func makeRequest(method, url, token string, data interface{}) ([]byte, error) {
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -409,12 +430,12 @@ func loadConfig() []ConfigEntry {
 	var file []byte
 	var err error
 
-	// 1. Try executable directory (Production)
+	// Try executable directory
 	ex, _ := os.Executable()
 	exePath := filepath.Join(filepath.Dir(ex), "config.json")
 	file, err = os.ReadFile(exePath)
 
-	// 2. Fallback: Try current working directory (Development)
+	// ORRR try current working directory
 	if err != nil {
 		wd, _ := os.Getwd()
 		wdPath := filepath.Join(wd, "config.json")
