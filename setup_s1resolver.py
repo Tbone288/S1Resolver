@@ -11,23 +11,10 @@ BINARY_NAME = "S1Resolver"
 CONFIG_NAME = "config.json"
 ZSHRC_PATH = os.path.expanduser("~/.zshrc")
 
-# The Master List of Clients
-CLIENTS = [
-    {"name": "NFR",        "url": "https://usea1-300-nfr.sentinelone.net"},
-    {"name": "BHQ",        "url": "https://usea1-014.sentinelone.net"},
-    {"name": "Redmond",    "url": "https://usea1-014.sentinelone.net"},
-    {"name": "HCS",        "url": "https://usea1-014.sentinelone.net"},
-    {"name": "LRE",        "url": "https://usea1-016.sentinelone.net"},
-    {"name": "HPSM",       "url": "https://usea1-016.sentinelone.net"},
-    {"name": "NMM",        "url": "https://usea1-011.sentinelone.net"},
-    {"name": "OldCastle",  "url": "https://usea1-015.sentinelone.net"},
-    {"name": "SaaSy",      "url": "https://usea1-pax8-exsp.sentinelone.net"}
-]
-
 # Zsh Configuration Block
 ZSH_BLOCK = f"""
 # --- S1Resolver Tool ---
-# Added by install_s1.py
+# Added by install_s1resolver.py
 export PATH="{INSTALL_DIR}:$PATH"
 
 # Create shortcut 's1' so you don't have to type the full name
@@ -46,7 +33,6 @@ _s1resolver_completion() {{
 }}
 # Register completion for both commands
 compdef _s1resolver_completion {BINARY_NAME} s1
-# --------------------------
 """
 
 def print_color(text, color_code):
@@ -62,27 +48,37 @@ def main():
         print(f"Please make sure the '{BINARY_NAME}' binary is in the same folder as this script.")
         return
 
-    # 2. Collect Tokens
-    print("\nWe need to configure your API tokens. You can skip any you don't use by pressing Enter.")
+    # 2. Configure Consoles (Interactive Mode)
+    print("\nLet's configure your SentinelOne consoles.")
+    print("You will need the Console Name, URL, and API Token for each environment.")
+    print("Press Enter on an empty 'Console Name' to finish.")
     
     user_config = []
     
-    for client in CLIENTS:
-        print(f"\n[{client['name']}] ({client['url']})")
-        token = input(f"Enter API Token: ").strip()
+    while True:
+        print("\n--- Add New Console ---")
+        name = input("Console Name (e.g., NFR, Prod): ").strip()
+        if not name:
+            break
+            
+        url = input(f"URL for '{name}' (e.g., https://usea1-001.sentinelone.net): ").strip()
+        if url and not url.startswith("http"):
+             print_color("Warning: URL should usually start with https://", "33")
+             
+        token = input(f"API Token for '{name}': ").strip()
         
-        if token:
+        if name and url and token:
             user_config.append({
-                "name": client['name'],
-                "url": client['url'],
+                "name": name,
+                "url": url,
                 "token": token
             })
+            print_color(f"Added '{name}'!", "32")
         else:
-            print(f"Skipping {client['name']}...")
+            print_color("Skipping... (Missing fields)", "33")
 
     if not user_config:
-        print_color("\nNo tokens provided. Aborting installation.", "91")
-        return
+        print_color("\nNo configuration created. (Proceeding with empty config...)", "33")
 
     # 3. Create Install Directory
     if not os.path.exists(INSTALL_DIR):
@@ -101,24 +97,20 @@ def main():
         print_color(f"Error moving binary: {e}", "91")
         return
 
-    # 5. Remove Quarantine Attribute (Fixes Slowness)
-    print("Applying speed fix (removing Apple quarantine)...")
-    try:
-        subprocess.run(["xattr", "-d", "com.apple.quarantine", dest_binary], stderr=subprocess.DEVNULL)
-    except Exception:
-        pass 
-
-    # 6. Write Config JSON
+    # 5. Write Config JSON
     config_path = os.path.join(INSTALL_DIR, CONFIG_NAME)
     try:
-        with open(config_path, 'w') as f:
-            json.dump(user_config, f, indent=4)
-        print(f"Configuration saved to {config_path}")
+        if not user_config and os.path.exists(config_path):
+             print("No new inputs provided. Keeping existing config.json.")
+        else:
+            with open(config_path, 'w') as f:
+                json.dump(user_config, f, indent=4)
+            print(f"Configuration saved to {config_path}")
     except Exception as e:
         print_color(f"Error saving config: {e}", "91")
         return
 
-    # 7. Update Zshrc
+    # 6. Update Zshrc
     already_installed = False
     if os.path.exists(ZSHRC_PATH):
         with open(ZSHRC_PATH, 'r') as f:
@@ -132,11 +124,11 @@ def main():
     else:
         print("Zsh configuration already exists. Skipping...")
 
-    # 8. Finish
+    # 7. Finish
     print_color("\nSuccess! Installation Complete.", "1;32") # Green
     print("Please restart your terminal or run:")
     print_color(f"  source {ZSHRC_PATH}", "1;33") # Yellow
-    print(f"\nThen try typing 's1 -c [TAB]' to start!")
+    print(f"\nThen try typing 's1' to start!")
 
 if __name__ == "__main__":
     main()
