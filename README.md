@@ -1,4 +1,4 @@
-S1Resolver
+
 S1Resolver is a high-performance CLI tool designed for SOC analysts to instantly identify and resolve threats and alerts across multiple SentinelOne consoles.
 
 Installation Location
