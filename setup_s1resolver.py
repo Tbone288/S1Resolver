@@ -11,35 +11,42 @@ BINARY_NAME = "S1Resolver"
 CONFIG_NAME = "config.json"
 ZSHRC_PATH = os.path.expanduser("~/.zshrc")
 
-# Zsh Configuration Block
-ZSH_BLOCK = f"""
+# --- ZSH TEMPLATE ---
+ZSH_BLOCK = """
 # --- S1Resolver Tool ---
 # Added by install_s1resolver.py
-export PATH="{INSTALL_DIR}:$PATH"
+export PATH="__PATH__:$PATH"
 
-# Create shortcut 's1' so you don't have to type the full name
-alias s1="{BINARY_NAME}"
-
-# Enable Autocomplete for both S1Resolver AND s1
+# 1. Initialize completion system (Safe check)
 autoload -Uz compinit && compinit
-_s1resolver_completion() {{
+
+# 2. Define completion function
+_s1_completion() {
     local -a consoles
-    consoles=("${{(@f)$({BINARY_NAME} -list-consoles)}}")
+    # Use the binary directly to fetch options
+    consoles=("${(@f)$(__BINARY__ -list-consoles)}")
+    
     _arguments \\
         '-c[Select Console]:console:($consoles)' \\
         '-d[Select Default Site]' \\
         '-t[Threats Mode]' \\
-        '-a[Alerts Mode]'
-}}
-# Register completion for both commands
-compdef _s1resolver_completion {BINARY_NAME} s1
+        '-a[Alerts Mode]' \\
+        '-version[Show version]'
+}
+
+# 3. Register it for BOTH the alias and the binary
+compdef _s1_completion s1 __BINARY__
+
+# 4. Define alias
+alias s1="__BINARY__"
+# --------------------------
 """
 
 def print_color(text, color_code):
     print(f"\033[{color_code}m{text}\033[0m")
 
 def main():
-    print_color("\n=== S1Resolver Installer ===", "1;36") # Cyan
+    print_color("\n=== S1Resolver Installer ===", "1;36")
     
     # 1. Verify Binary exists
     current_binary = os.path.join(os.getcwd(), BINARY_NAME)
@@ -48,7 +55,7 @@ def main():
         print(f"Please make sure the '{BINARY_NAME}' binary is in the same folder as this script.")
         return
 
-    # 2. Configure Consoles (Interactive Mode)
+    # 2. Configure Consoles
     print("\nLet's configure your SentinelOne consoles.")
     print("You will need the Console Name, URL, and API Token for each environment.")
     print("Press Enter on an empty 'Console Name' to finish.")
@@ -119,8 +126,11 @@ def main():
 
     if not already_installed:
         print("Adding configuration to ~/.zshrc...")
+        # Replace placeholders with actual values
+        final_block = ZSH_BLOCK.replace("__PATH__", INSTALL_DIR).replace("__BINARY__", BINARY_NAME)
+        
         with open(ZSHRC_PATH, 'a') as f:
-            f.write(ZSH_BLOCK)
+            f.write(final_block)
     else:
         print("Zsh configuration already exists. Skipping...")
 
