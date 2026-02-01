@@ -5,10 +5,10 @@ S1Resolver is a CLI tool designed for SOC analysts to quickly resolve open threa
 #### Installation Location
 By default, the installer creates a visible folder in your home directory to store the binary and configuration: ~/S1Resolver
 
-It also automatically registers the command alias s1 in your terminal.
+It also automatically registers the command alias `s1` in your terminal.
 
 ##### Customizing the Install Location:
-If you prefer to install the tool elsewhere (e.g., inside a tools folder), edit the install_s1resolver.py script before running it.
+If you prefer to install the tool elsewhere, edit the install_s1resolver.py script before running it.
 
 Change Line 9:
 `INSTALL_DIR = os.path.expanduser("~/S1Resolver")`
@@ -17,13 +17,12 @@ Change Line 9:
 OR If you have already installed the tool and want to move it to a new location:
 
 Move the folder:
-`mv ~/S1Resolver ~/scripts/S1Resolver`
+Ex: `mv ~/S1Resolver ~/scripts/S1Resolver`
 
 Then open your zsh configuration: `nano ~/.zshrc`
-
 And find the S1Resolver section near the bottom.
 
-**Update the export PATH line to match your new location.**
+**IMPORTANT - Update the export PATH line to match your new location.**
 
 Apply Changes: `source ~/.zshrc`
 
