@@ -17,16 +17,18 @@ import (
 	"time"
 )
 
+// --- CONSTANTS ---
 const (
-	AppVersion  = "v1.0"
+	AppVersion  = "v1.1"
 	ColorHeader = "\033[96m"
 	ColorBlue   = "\033[94m"
 	ColorGreen  = "\033[92m" 
-	ColorRed    = "\033[91m" 
+	ColorRed    = "\033[91m"
 	ColorReset  = "\033[0m"
 	ColorBold   = "\033[1m"
 )
 
+// --- STRUCTS ---
 type ConfigEntry struct {
 	Name  string `json:"name"`
 	URL   string `json:"url"`
@@ -68,6 +70,7 @@ type GenericResponse struct {
 	} `json:"data"`
 }
 
+// Result struct for concurrent scanning
 type ScanResult struct {
 	SiteName string
 	Count    int
@@ -78,22 +81,46 @@ type ScanResult struct {
 var client = &http.Client{Timeout: 15 * time.Second}
 
 func main() {
-	// 1. Parse Flags
+	// 1. Define Flags
 	consoleFlag := flag.String("c", "", "Console Name")
 	defaultFlag := flag.Bool("d", false, "Select Default Site")
 	threatsFlag := flag.Bool("t", false, "Threats Mode")
 	alertsFlag := flag.Bool("a", false, "Alerts Mode")
 	listConsolesFlag := flag.Bool("list-consoles", false, "List consoles for autocomplete")
 	versionFlag := flag.Bool("version", false, "Show version")
+
+	// 2. Custom Help Menu (-h)
+	flag.Usage = func() {
+		h := ColorHeader
+		b := ColorBold
+		r := ColorReset
+		blue := ColorBlue
+
+		fmt.Printf("\n%s%s=== S1Resolver %s ===%s\n", b, h, AppVersion, r)
+		fmt.Println("Rapidly triage and resolve SentinelOne threats & alerts.")
+		fmt.Println()
+		fmt.Printf("%sUsage:%s\n  s1 [flags]\n", b, r)
+		fmt.Println()
+		fmt.Printf("%sFlags:%s\n", b, r)
+		fmt.Printf("  %s-c <name>%s    Jump to a specific Console\n", blue, r)
+		fmt.Printf("  %s-d%s           Auto-select 'Default' site if available\n", blue, r)
+		fmt.Printf("  %s-t%s           Start in Threats Mode\n", blue, r)
+		fmt.Printf("  %s-a%s           Start in Alerts Mode\n", blue, r)
+		fmt.Printf("  %s-version%s     Show version\n", blue, r)
+		fmt.Println()
+		fmt.Println("  (Run without flags for interactive mode)")
+		fmt.Println()
+	}
+
 	flag.Parse()
 
-	// 2. Handle Version
+	// 3. Handle Version
 	if *versionFlag {
 		fmt.Printf("S1Resolver %s\n", AppVersion)
 		os.Exit(0)
 	}
 
-	// 3. Load Config
+	// 4. Load Config
 	config := loadConfig()
 
 	// --- AUTOCOMPLETE HOOK ---
@@ -170,7 +197,7 @@ func main() {
 		fmt.Printf("%sNo 'Default' site found.%s\n", ColorRed, ColorReset)
 		return
 	} else {
-		// Loops back to select site if alert or threat was preselected using flags without a site selecion
+		// Loop for alert/threat selected with no site
 		for {
 			fmt.Printf("\n%s%s--- Available Sites ---%s\n", ColorBold, ColorHeader, ColorReset)
 			fmt.Printf("%s0.%s %sNot Sure (Scan All Sites)%s\n", ColorBlue, ColorReset, ColorBold, ColorReset)
@@ -180,7 +207,7 @@ func main() {
 
 			inputStr := promptString("\n" + ColorBold + "Select Site:" + ColorReset + " ")
 
-			// Option to scan all sites simultaneously
+			// --- OPTION 0: SCAN ALL ---
 			if inputStr == "0" {
 				mode := ""
 				if *threatsFlag {
@@ -435,7 +462,7 @@ func loadConfig() []ConfigEntry {
 	exePath := filepath.Join(filepath.Dir(ex), "config.json")
 	file, err = os.ReadFile(exePath)
 
-	// ORRR try current working directory
+	// ORRR try current working directory (For Development)
 	if err != nil {
 		wd, _ := os.Getwd()
 		wdPath := filepath.Join(wd, "config.json")
